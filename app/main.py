@@ -23,7 +23,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=[
             "http://localhost:5173",
-            "https://flickpick.mel-2cb.workers.dev/",
+            "https://flickpick.mel-2cb.workers.dev",
         ],
         allow_credentials=True,
         allow_methods=["*"],

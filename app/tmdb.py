@@ -87,14 +87,23 @@ def get_trending_movies(time_window: str = "week") -> Any:
 
 def get_upcoming_movies() -> Any:
     payload = _cached_get("/movie/upcoming", params={"region": "US"})
-    # TMDB's upcoming list can include already-released titles; keep today+.
+    # TMDB's upcoming list can include already-released titles; keep titles released today or later.
     today = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
     results = [
         movie
         for movie in (payload.get("results") or [])
         if (movie.get("release_date") or "") >= today
     ]
-    return {**payload, "results": results}
+    out = {
+        **payload,
+        "results": results,
+        "total_results": len(results),
+        "total_pages": 1,
+    }
+    dates = payload.get("dates")
+    if isinstance(dates, dict):
+        out["dates"] = {**dates, "minimum": today}
+    return out
 
 
 def search_movies(query: str) -> Any:

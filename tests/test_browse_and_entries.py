@@ -1,5 +1,7 @@
 import threading
+from datetime import datetime, timezone
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -105,25 +107,46 @@ def test_get_upcoming_movies_uses_us_region(client):
         response = client.get("/movies/upcoming")
 
     assert response.status_code == 200
-    assert response.json() == payload
+    body = response.json()
+    assert body["results"] == payload["results"]
+    assert body["total_results"] == 1
+    assert body["total_pages"] == 1
     cached_get.assert_called_once_with("/movie/upcoming", params={"region": "US"})
 
 
-def test_get_upcoming_filters_past_and_missing_release_dates(client):
+def test_get_upcoming_filters_past_empty_and_null_dates(client):
+    # 2026-03-16 02:00 UTC is still 2026-03-15 in America/New_York.
+    fixed_utc = datetime(2026, 3, 16, 2, 0, tzinfo=timezone.utc)
     payload = {
         "page": 1,
+        "total_pages": 5,
+        "total_results": 4,
+        "dates": {"maximum": "2026-04-15", "minimum": "2026-03-01"},
         "results": [
             {"id": 1, "title": "Old", "release_date": "2000-01-01"},
-            {"id": 2, "title": "Future", "release_date": "2099-06-01"},
-            {"id": 3, "title": "Missing date"},
+            {"id": 2, "title": "Today", "release_date": "2026-03-15"},
+            {"id": 3, "title": "Empty", "release_date": ""},
+            {"id": 4, "title": "Null", "release_date": None},
+            {"id": 5, "title": "Future", "release_date": "2099-06-01"},
         ],
     }
 
-    with patch("app.tmdb._cached_get", return_value=payload):
+    with (
+        patch("app.tmdb.datetime") as mock_datetime,
+        patch("app.tmdb._cached_get", return_value=payload),
+    ):
+        mock_datetime.now.side_effect = lambda tz=None: (
+            fixed_utc.astimezone(tz) if tz else fixed_utc.replace(tzinfo=None)
+        )
         response = client.get("/movies/upcoming")
 
+    mock_datetime.now.assert_called_with(ZoneInfo("America/New_York"))
     assert response.status_code == 200
-    assert [movie["title"] for movie in response.json()["results"]] == ["Future"]
+    body = response.json()
+    assert [movie["title"] for movie in body["results"]] == ["Today", "Future"]
+    assert body["total_results"] == 2
+    assert body["total_pages"] == 1
+    assert body["dates"] == {"maximum": "2026-04-15", "minimum": "2026-03-15"}
 
 
 @pytest.mark.parametrize("upstream_status", [401, 404, 429, 500, 503])

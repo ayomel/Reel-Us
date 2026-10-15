@@ -35,3 +35,5 @@ select = ["E", "F", "I", "UP", "B"]
 "app/routers/*.py" = ["B008"]
 # Env must be set before app imports so the test engine uses sqlite://.
 "tests/conftest.py" = ["E402"]
+# Keep timezone.utc in the NY-boundary upcoming test to match the reviewed snippet.
+"tests/test_browse_and_entries.py" = ["UP017"]

@@ -16,6 +16,10 @@ def get_movie(movie_id: int):
         trailer = tmdb.get_trailer_url(videos)
         return {**movie, "streaming_providers": us_providers, "trailer": trailer}
     except HTTPStatusError as exc:
+        # Unknown/unavailable movie ids must stay a clean 404. Passing through
+        # TMDB 401/500 confuses clients that treat those as auth or server faults.
+        if exc.response.status_code in {401, 404, 500}:
+            raise HTTPException(status_code=404, detail="Movie not found") from exc
         raise HTTPException(status_code=exc.response.status_code, detail="TMDB request failed") from exc
 
 

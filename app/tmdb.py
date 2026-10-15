@@ -70,4 +70,24 @@ def get_trending_movies(time_window: str = "week") -> Any:
 
 
 def search_movies(query: str) -> Any:
-    return _cached_get("/search/movie", params={"query": query})
+    # Merge pages 1-2 before sorting so high-popularity hits on page 2
+    # (e.g. Batman for "bat") are not dropped by TMDB's default relevance order.
+    page1 = _cached_get("/search/movie", params={"query": query, "page": "1"})
+    results = list(page1.get("results") or [])
+    total_pages = int(page1.get("total_pages") or 1)
+    if total_pages >= 2:
+        page2 = _cached_get("/search/movie", params={"query": query, "page": "2"})
+        results.extend(page2.get("results") or [])
+
+    seen_ids: set[int] = set()
+    unique: list[dict] = []
+    for movie in results:
+        movie_id = movie.get("id")
+        if movie_id in seen_ids:
+            continue
+        if movie_id is not None:
+            seen_ids.add(movie_id)
+        unique.append(movie)
+
+    unique.sort(key=lambda movie: movie.get("popularity") or 0, reverse=True)
+    return {**page1, "page": 1, "results": unique}

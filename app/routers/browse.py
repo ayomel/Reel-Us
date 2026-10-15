@@ -6,6 +6,14 @@ from app import tmdb
 router = APIRouter(tags=["browse"])
 
 
+@router.get("/movies/upcoming")
+def get_upcoming_movies():
+    try:
+        return tmdb.get_upcoming_movies()
+    except HTTPStatusError as exc:
+        raise HTTPException(status_code=exc.response.status_code, detail="TMDB request failed") from exc
+
+
 @router.get("/movies/{movie_id}")
 def get_movie(movie_id: int):
     try:
@@ -16,6 +24,9 @@ def get_movie(movie_id: int):
         trailer = tmdb.get_trailer_url(videos)
         return {**movie, "streaming_providers": us_providers, "trailer": trailer}
     except HTTPStatusError as exc:
+        # Unknown ids (and auth-shaped TMDB errors for missing titles) become a clean 404.
+        if exc.response.status_code in (401, 404):
+            raise HTTPException(status_code=404, detail="Movie not found") from exc
         raise HTTPException(status_code=exc.response.status_code, detail="TMDB request failed") from exc
 
 

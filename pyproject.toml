@@ -10,5 +10,14 @@ dependencies = [
     "sqlmodel>=0.0.47",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
 [tool.fastapi]
 app = "app.main:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -20,6 +20,10 @@ def _auth_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {_api_key()}"}
 
 
+def clear_cache() -> None:
+    _cache.clear()
+
+
 def _cached_get(path: str, params: dict[str, str] | None = None) -> Any:
     url = f"{TMDB_BASE_URL}{path}"
     cache_key = (url, tuple(sorted((params or {}).items())))
@@ -69,5 +73,29 @@ def get_trending_movies(time_window: str = "week") -> Any:
     return _cached_get(f"/trending/movie/{time_window}")
 
 
+def get_upcoming_movies() -> Any:
+    return _cached_get("/movie/upcoming", params={"region": "US"})
+
+
 def search_movies(query: str) -> Any:
-    return _cached_get("/search/movie", params={"query": query})
+    # Pages 1-2 together so mid-list hits like Batman still rank by popularity.
+    page1 = _cached_get("/search/movie", params={"query": query, "page": "1"})
+    page2 = _cached_get("/search/movie", params={"query": query, "page": "2"})
+
+    merged: list[dict] = []
+    seen_ids: set[int] = set()
+    for item in list(page1.get("results", [])) + list(page2.get("results", [])):
+        movie_id = item.get("id")
+        if movie_id is None or movie_id in seen_ids:
+            continue
+        seen_ids.add(movie_id)
+        merged.append(item)
+
+    merged.sort(key=lambda movie: movie.get("popularity") or 0, reverse=True)
+
+    return {
+        **page1,
+        "page": 1,
+        "results": merged,
+        "total_results": len(merged),
+    }

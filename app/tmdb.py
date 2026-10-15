@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 from typing import Any
@@ -7,8 +8,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 _CACHE_TTL_SECONDS = 300
+# Keep TMDB calls short so a hung upstream fails the request instead of the worker.
+_HTTP_TIMEOUT_SECONDS = 7.0
 _cache: dict[tuple[str, tuple[tuple[str, str], ...]], tuple[float, Any]] = {}
 
 
@@ -30,7 +35,12 @@ def _cached_get(path: str, params: dict[str, str] | None = None) -> Any:
         if now - cached_at < _CACHE_TTL_SECONDS:
             return payload
 
-    response = httpx.get(url, headers=_auth_headers(), params=params, timeout=30)
+    response = httpx.get(
+        url,
+        headers=_auth_headers(),
+        params=params,
+        timeout=_HTTP_TIMEOUT_SECONDS,
+    )
     response.raise_for_status()
     payload = response.json()
     _cache[cache_key] = (now, payload)
@@ -74,10 +84,14 @@ def search_movies(query: str) -> Any:
     # (e.g. Batman for "bat") are not dropped by TMDB's default relevance order.
     page1 = _cached_get("/search/movie", params={"query": query, "page": "1"})
     results = list(page1.get("results") or [])
-    total_pages = int(page1.get("total_pages") or 1)
-    if total_pages >= 2:
-        page2 = _cached_get("/search/movie", params={"query": query, "page": "2"})
-        results.extend(page2.get("results") or [])
+    upstream_total_pages = int(page1.get("total_pages") or 1)
+    if upstream_total_pages >= 2:
+        try:
+            page2 = _cached_get("/search/movie", params={"query": query, "page": "2"})
+            results.extend(page2.get("results") or [])
+        except (httpx.HTTPStatusError, httpx.RequestError) as exc:
+            # Page 1 alone is still useful; log and continue without page 2.
+            logger.warning("TMDB search page 2 failed; using page 1 only: %s", exc)
 
     seen_ids: set[int] = set()
     unique: list[dict] = []
@@ -90,4 +104,15 @@ def search_movies(query: str) -> Any:
         unique.append(movie)
 
     unique.sort(key=lambda movie: movie.get("popularity") or 0, reverse=True)
-    return {**page1, "page": 1, "results": unique}
+
+    # Choice: return one ranked page built from TMDB pages 1-2.
+    # total_pages is always 1 because this endpoint does not expose further pages.
+    # total_results keeps TMDB's full match count so clients know how large the
+    # upstream result set is beyond the merged window we return.
+    return {
+        **page1,
+        "page": 1,
+        "total_pages": 1,
+        "total_results": int(page1.get("total_results") or len(unique)),
+        "results": unique,
+    }

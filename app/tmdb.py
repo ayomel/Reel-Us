@@ -87,7 +87,8 @@ def get_trending_movies(time_window: str = "week") -> Any:
 
 def get_upcoming_movies() -> Any:
     payload = _cached_get("/movie/upcoming", params={"region": "US"})
-    # TMDB's upcoming list can include already-released titles; keep titles released today or later.
+    # TMDB's upcoming list can include already-released titles.
+    # Keep titles released today or later.
     today = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
     results = [
         movie

@@ -116,7 +116,7 @@ def test_get_upcoming_movies_uses_us_region(client):
 
 def test_get_upcoming_filters_past_empty_and_null_dates(client):
     # 2026-03-16 02:00 UTC is still 2026-03-15 in America/New_York.
-    fixed_utc = datetime(2026, 3, 16, 2, 0, tzinfo=timezone.utc)  # noqa: UP017
+    fixed_utc = datetime(2026, 3, 16, 2, 0, tzinfo=timezone.utc)
     payload = {
         "page": 1,
         "total_pages": 5,

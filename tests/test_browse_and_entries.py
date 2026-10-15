@@ -1,5 +1,5 @@
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -115,7 +115,8 @@ def test_get_upcoming_movies_uses_us_region(client):
 
 
 def test_get_upcoming_filters_past_empty_and_null_dates(client):
-    fixed_now = datetime(2026, 3, 15, 12, 0, 0, tzinfo=ZoneInfo("America/New_York"))
+    # 2026-03-16 02:00 UTC is still 2026-03-15 in America/New_York.
+    fixed_utc = datetime(2026, 3, 16, 2, 0, tzinfo=timezone.utc)  # noqa: UP017
     payload = {
         "page": 1,
         "total_pages": 5,
@@ -134,9 +135,12 @@ def test_get_upcoming_filters_past_empty_and_null_dates(client):
         patch("app.tmdb.datetime") as mock_datetime,
         patch("app.tmdb._cached_get", return_value=payload),
     ):
-        mock_datetime.now.return_value = fixed_now
+        mock_datetime.now.side_effect = lambda tz=None: (
+            fixed_utc.astimezone(tz) if tz else fixed_utc.replace(tzinfo=None)
+        )
         response = client.get("/movies/upcoming")
 
+    mock_datetime.now.assert_called_with(ZoneInfo("America/New_York"))
     assert response.status_code == 200
     body = response.json()
     assert [movie["title"] for movie in body["results"]] == ["Today", "Future"]

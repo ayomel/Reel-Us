@@ -91,6 +91,47 @@ def test_search_rejects_empty_query(client):
     assert response.status_code == 422
 
 
+def test_search_rejects_whitespace_only_query(client):
+    response = client.get("/search/movie", params={"query": "   "})
+    assert response.status_code == 422
+
+
+def test_get_upcoming_movies_uses_us_region(client):
+    payload = {"results": [{"id": 10, "title": "Soon"}]}
+
+    with patch("app.tmdb._cached_get", return_value=payload) as cached_get:
+        response = client.get("/movies/upcoming")
+
+    assert response.status_code == 200
+    assert response.json() == payload
+    cached_get.assert_called_once_with("/movie/upcoming", params={"region": "US"})
+
+
+@pytest.mark.parametrize("upstream_status", [401, 429, 500, 503])
+def test_get_upcoming_maps_upstream_errors_to_503(client, upstream_status):
+    with patch("app.tmdb.get_upcoming_movies", side_effect=_http_error(upstream_status)):
+        response = client.get("/movies/upcoming")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Service unavailable"
+
+
+def test_get_upcoming_timeout_returns_503(client):
+    with patch("app.tmdb.get_upcoming_movies", side_effect=_timeout_error()):
+        response = client.get("/movies/upcoming")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Service unavailable"
+
+
+def test_get_upcoming_tmdb_404_returns_404(client):
+    with patch("app.tmdb.get_upcoming_movies", side_effect=_http_error(404)):
+        response = client.get("/movies/upcoming")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Not found"
+
+
 def test_get_movie_unknown_id_returns_404(client):
     with patch("app.tmdb.get_movie", side_effect=_http_error(404)):
         response = client.get("/movies/999999999")
@@ -156,7 +197,7 @@ def test_get_entry_returns_503_when_tmdb_fails(client):
         "/entry",
         json={"tmdb_id": 55, "status": "want", "added_by": "mel"},
     )
-    assert created.status_code == 200
+    assert created.status_code == 201
     entry_id = created.json()["id"]
 
     with patch("app.routers.entries.get_movie", side_effect=_http_error(503)):
@@ -185,7 +226,7 @@ def test_create_entry_rejects_duplicate_tmdb_id(client, engine):
         "/entry",
         json={"tmdb_id": 42, "status": "want", "added_by": "mel"},
     )
-    assert first.status_code == 200
+    assert first.status_code == 201
     assert first.json()["tmdb_id"] == 42
 
     duplicate = client.post(

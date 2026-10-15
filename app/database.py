@@ -55,8 +55,8 @@ def create_all() -> None:
 def ensure_tmdb_id_unique() -> None:
     """Add a unique index on watchlist_entries.tmdb_id without deleting rows.
 
-    If duplicate tmdb_ids already exist, log them and skip the constraint so
-    the process can still start. Operators must resolve duplicates by hand.
+    If duplicate tmdb_ids exist, log them and skip the index. Delete the
+    duplicates by hand, then restart.
     """
     inspector = inspect(engine)
     if "watchlist_entries" not in inspector.get_table_names():

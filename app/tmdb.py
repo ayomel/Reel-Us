@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 _CACHE_TTL_SECONDS = 300
-# Keep TMDB calls short so a hung upstream fails the request instead of the worker.
+# Fail TMDB calls after 7s so a hung upstream can't block a worker.
 _HTTP_TIMEOUT_SECONDS = 7.0
 _cache: dict[tuple[str, tuple[tuple[str, str], ...]], tuple[float, Any]] = {}
 
@@ -79,6 +79,10 @@ def get_trending_movies(time_window: str = "week") -> Any:
     return _cached_get(f"/trending/movie/{time_window}")
 
 
+def get_upcoming_movies() -> Any:
+    return _cached_get("/movie/upcoming", params={"region": "US"})
+
+
 def search_movies(query: str) -> Any:
     # Merge pages 1-2 before sorting so high-popularity hits on page 2
     # (e.g. Batman for "bat") are not dropped by TMDB's default relevance order.
@@ -105,7 +109,7 @@ def search_movies(query: str) -> Any:
 
     unique.sort(key=lambda movie: movie.get("popularity") or 0, reverse=True)
 
-    # Choice: return one ranked page built from TMDB pages 1-2.
+    # Return one ranked page built from TMDB pages 1-2.
     # total_pages is always 1 because this endpoint does not expose further pages.
     # total_results keeps TMDB's full match count so clients know how large the
     # upstream result set is beyond the merged window we return.

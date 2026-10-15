@@ -1,12 +1,13 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from httpx import HTTPError, HTTPStatusError
+from httpx import HTTPError
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.database import get_db
 from app.models import Watchlist
+from app.routers.browse import raise_for_tmdb_failure
 from app.schemas import WatchlistEntryCreate, WatchlistEntryRead, WatchlistEntryUpdate
 from app.tmdb import get_movie
 
@@ -18,7 +19,7 @@ def list_entries(session: Session = Depends(get_db)):
     return session.exec(select(Watchlist)).all()
 
 
-@router.post("/entry", response_model=WatchlistEntryRead)
+@router.post("/entry", response_model=WatchlistEntryRead, status_code=201)
 def create_entry(body: WatchlistEntryCreate, session: Session = Depends(get_db)):
     existing = session.exec(select(Watchlist).where(Watchlist.tmdb_id == body.tmdb_id)).first()
     if existing is not None:
@@ -47,9 +48,7 @@ def get_entry(entry_id: int, session: Session = Depends(get_db)):
     try:
         movie = get_movie(entry.tmdb_id)
     except HTTPError as exc:
-        if isinstance(exc, HTTPStatusError) and exc.response.status_code == 404:
-            raise HTTPException(status_code=404, detail="Movie not found") from exc
-        raise HTTPException(status_code=503, detail="Service unavailable") from exc
+        raise_for_tmdb_failure(exc, movie_lookup=True)
     return {**entry.model_dump(), "movie": movie}
 
 

@@ -1,9 +1,16 @@
+import logging
 import os
 
 from dotenv import load_dotenv
+from sqlalchemy import inspect, text
 from sqlmodel import Session, SQLModel, create_engine
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+_UNIQUE_TMDB_INDEX = "ix_watchlist_entries_tmdb_id"
+
 
 def _normalize_database_url(url: str) -> str:
     if url.startswith("sqlite"):
@@ -15,9 +22,7 @@ def _normalize_database_url(url: str) -> str:
     return url
 
 
-DATABASE_URL = _normalize_database_url(
-    os.getenv("DATABASE_URL", "sqlite:///database.db")
-)
+DATABASE_URL = _normalize_database_url(os.getenv("DATABASE_URL", "sqlite:///database.db"))
 
 _engine_kwargs: dict = {}
 if DATABASE_URL.startswith("sqlite"):
@@ -41,6 +46,51 @@ def get_db():
 
 
 def create_all() -> None:
-    import app.models
+    import app.models  # noqa: F401  # register table metadata
 
     SQLModel.metadata.create_all(engine)
+    ensure_tmdb_id_unique()
+
+
+def ensure_tmdb_id_unique() -> None:
+    """Add a unique index on watchlist_entries.tmdb_id without deleting rows.
+
+    If duplicate tmdb_ids exist, log them and skip the index. Delete the
+    duplicates by hand, then restart.
+    """
+    inspector = inspect(engine)
+    if "watchlist_entries" not in inspector.get_table_names():
+        return
+
+    indexes = inspector.get_indexes("watchlist_entries")
+    unique_constraints = inspector.get_unique_constraints("watchlist_entries")
+    has_unique_tmdb = any(
+        idx.get("unique") and idx.get("column_names") == ["tmdb_id"] for idx in indexes
+    ) or any(constraint.get("column_names") == ["tmdb_id"] for constraint in unique_constraints)
+    if has_unique_tmdb:
+        return
+
+    with engine.begin() as conn:
+        duplicates = conn.execute(
+            text(
+                "SELECT tmdb_id FROM watchlist_entries "
+                "GROUP BY tmdb_id HAVING COUNT(*) > 1 "
+                "ORDER BY tmdb_id"
+            )
+        ).fetchall()
+        if duplicates:
+            dup_ids = ", ".join(str(row[0]) for row in duplicates)
+            logger.error(
+                "Skipping unique index on watchlist_entries.tmdb_id; "
+                "duplicate tmdb_ids exist: %s. Delete the duplicates by hand, then restart.",
+                dup_ids,
+            )
+            return
+
+        # Index-only change on SQLite and Postgres; does not rebuild or delete rows.
+        conn.execute(
+            text(
+                f"CREATE UNIQUE INDEX IF NOT EXISTS {_UNIQUE_TMDB_INDEX} "
+                "ON watchlist_entries (tmdb_id)"
+            )
+        )

@@ -81,15 +81,13 @@ def ensure_tmdb_id_unique() -> None:
         if duplicates:
             dup_ids = ", ".join(str(row[0]) for row in duplicates)
             logger.error(
-                "Skipping unique index on watchlist_entries.tmdb_id because "
-                "duplicate tmdb_ids already exist: %s. Resolve the duplicates, "
-                "then restart to add the constraint. No rows were deleted.",
+                "Skipping unique index on watchlist_entries.tmdb_id; "
+                "duplicate tmdb_ids exist: %s. Delete the duplicates by hand, then restart.",
                 dup_ids,
             )
             return
 
-        # CREATE UNIQUE INDEX works on both SQLite and Postgres and never
-        # rebuilds the table, so existing rows are left untouched.
+        # Index-only change on SQLite and Postgres; does not rebuild or delete rows.
         conn.execute(
             text(
                 f"CREATE UNIQUE INDEX IF NOT EXISTS {_UNIQUE_TMDB_INDEX} "

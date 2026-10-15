@@ -25,6 +25,10 @@ def _auth_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {_api_key()}"}
 
 
+def clear_cache() -> None:
+    _cache.clear()
+
+
 def _cached_get(path: str, params: dict[str, str] | None = None) -> Any:
     url = f"{TMDB_BASE_URL}{path}"
     cache_key = (url, tuple(sorted((params or {}).items())))
@@ -101,10 +105,9 @@ def search_movies(query: str) -> Any:
     unique: list[dict] = []
     for movie in results:
         movie_id = movie.get("id")
-        if movie_id in seen_ids:
+        if movie_id is None or movie_id in seen_ids:
             continue
-        if movie_id is not None:
-            seen_ids.add(movie_id)
+        seen_ids.add(movie_id)
         unique.append(movie)
 
     unique.sort(key=lambda movie: movie.get("popularity") or 0, reverse=True)

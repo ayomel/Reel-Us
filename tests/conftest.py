@@ -28,7 +28,7 @@ def engine():
 
 @pytest.fixture()
 def client(engine):
-    tmdb._cache.clear()
+    tmdb.clear_cache()
     app = create_app()
 
     def override_get_db():
@@ -39,4 +39,4 @@ def client(engine):
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
-    tmdb._cache.clear()
+    tmdb.clear_cache()

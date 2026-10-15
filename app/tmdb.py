@@ -113,9 +113,7 @@ def search_movies(query: str) -> Any:
     unique.sort(key=lambda movie: movie.get("popularity") or 0, reverse=True)
 
     # Return one ranked page built from TMDB pages 1-2.
-    # total_pages is always 1 because this endpoint does not expose further pages.
-    # total_results keeps TMDB's full match count so clients know how large the
-    # upstream result set is beyond the merged window we return.
+    # total_pages is always 1. total_results is TMDB's full match count.
     return {
         **page1,
         "page": 1,

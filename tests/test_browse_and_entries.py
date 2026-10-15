@@ -107,7 +107,7 @@ def test_get_upcoming_movies_uses_us_region(client):
     cached_get.assert_called_once_with("/movie/upcoming", params={"region": "US"})
 
 
-@pytest.mark.parametrize("upstream_status", [401, 429, 500, 503])
+@pytest.mark.parametrize("upstream_status", [401, 404, 429, 500, 503])
 def test_get_upcoming_maps_upstream_errors_to_503(client, upstream_status):
     with patch("app.tmdb.get_upcoming_movies", side_effect=_http_error(upstream_status)):
         response = client.get("/movies/upcoming")
@@ -124,12 +124,12 @@ def test_get_upcoming_timeout_returns_503(client):
     assert response.json()["detail"] == "Service unavailable"
 
 
-def test_get_upcoming_tmdb_404_returns_404(client):
-    with patch("app.tmdb.get_upcoming_movies", side_effect=_http_error(404)):
+def test_get_upcoming_connection_error_returns_503(client):
+    with patch("app.tmdb.get_upcoming_movies", side_effect=_request_error()):
         response = client.get("/movies/upcoming")
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Not found"
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Service unavailable"
 
 
 def test_get_movie_unknown_id_returns_404(client):
@@ -168,6 +168,14 @@ def test_get_movie_request_error_returns_503(client):
 @pytest.mark.parametrize("upstream_status", [401, 429, 503])
 def test_search_maps_upstream_errors_to_503(client, upstream_status):
     with patch("app.tmdb.search_movies", side_effect=_http_error(upstream_status)):
+        response = client.get("/search/movie", params={"query": "bat"})
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Service unavailable"
+
+
+def test_search_tmdb_404_returns_503(client):
+    with patch("app.tmdb.search_movies", side_effect=_http_error(404)):
         response = client.get("/search/movie", params={"query": "bat"})
 
     assert response.status_code == 503

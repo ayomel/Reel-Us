@@ -49,7 +49,23 @@ def create_all() -> None:
     import app.models  # noqa: F401  # register table metadata
 
     SQLModel.metadata.create_all(engine)
+    ensure_watchlist_title()
     ensure_tmdb_id_unique()
+
+
+def ensure_watchlist_title() -> None:
+    """Add the optional movie title column to existing watchlists, preserving rows."""
+    inspector = inspect(engine)
+    if "watchlist_entries" not in inspector.get_table_names():
+        return
+    if any(column["name"] == "title" for column in inspector.get_columns("watchlist_entries")):
+        return
+
+    with engine.begin() as conn:
+        # Both SQLite and Postgres support this additive column migration.
+        conn.execute(
+            text("ALTER TABLE watchlist_entries ADD COLUMN title VARCHAR NOT NULL DEFAULT ''")
+        )
 
 
 def ensure_tmdb_id_unique() -> None:

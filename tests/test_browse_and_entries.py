@@ -348,3 +348,83 @@ def test_create_entry_integrity_error_returns_409(client, engine):
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Entry with this tmdb_id already exists"
+
+
+def test_entry_title_is_saved_returned_and_updated(client):
+    created = client.post(
+        "/entry",
+        json={"tmdb_id": 501, "title": "A Saved Movie Title"},
+    )
+
+    assert created.status_code == 201
+    entry_id = created.json()["id"]
+    assert created.json()["title"] == "A Saved Movie Title"
+
+    listed = client.get("/entry")
+    assert listed.status_code == 200
+    assert listed.json()[0]["title"] == "A Saved Movie Title"
+
+    updated = client.patch(f"/entry/{entry_id}", json={"title": "Renamed Movie"})
+    assert updated.status_code == 200
+    assert updated.json()["title"] == "Renamed Movie"
+
+    status_update = client.patch(f"/entry/{entry_id}", json={"status": "watched"})
+    assert status_update.status_code == 200
+    assert status_update.json()["title"] == "Renamed Movie"
+    assert client.get("/entry").json()[0]["title"] == "Renamed Movie"
+
+
+def test_entry_title_is_optional_for_existing_clients(client):
+    response = client.post("/entry", json={"tmdb_id": 502})
+
+    assert response.status_code == 201
+    assert response.json()["title"] == ""
+
+
+def test_entry_title_rejects_explicit_null(client):
+    response = client.post("/entry", json={"tmdb_id": 503, "title": None})
+
+    assert response.status_code == 422
+
+    created = client.post("/entry", json={"tmdb_id": 504, "title": "Must stay"})
+    update = client.patch(f"/entry/{created.json()['id']}", json={"title": None})
+
+    assert update.status_code == 422
+
+
+def test_legacy_database_title_migration_preserves_rows_and_is_idempotent(tmp_path, monkeypatch):
+    from sqlalchemy import inspect, text
+
+    import app.database as database
+
+    legacy_engine = create_engine(f"sqlite:///{tmp_path / 'legacy.db'}")
+    with legacy_engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE watchlist_entries ("
+                "id INTEGER PRIMARY KEY, tmdb_id INTEGER NOT NULL, status VARCHAR NOT NULL, "
+                "rating INTEGER, review VARCHAR NOT NULL, added_by VARCHAR NOT NULL, "
+                "created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO watchlist_entries "
+                "(id, tmdb_id, status, review, added_by, created_at, updated_at) "
+                "VALUES (1, 88, 'want', '', 'legacy', '2026-01-01', '2026-01-01')"
+            )
+        )
+
+    monkeypatch.setattr(database, "engine", legacy_engine)
+    database.create_all()
+    database.create_all()
+
+    columns = {column["name"] for column in inspect(legacy_engine).get_columns("watchlist_entries")}
+    with legacy_engine.connect() as connection:
+        row = connection.execute(
+            text("SELECT id, tmdb_id, added_by, title FROM watchlist_entries")
+        ).one()
+
+    assert "title" in columns
+    assert tuple(row) == (1, 88, "legacy", "")
+    legacy_engine.dispose()

@@ -7,6 +7,7 @@ from app.models import WatchlistStatus
 
 class WatchlistEntryCreate(BaseModel):
     tmdb_id: int
+    title: str = ""
     status: WatchlistStatus = WatchlistStatus.WANT
     rating: int | None = Field(default=None, ge=1, le=10)
     review: str = ""
@@ -14,6 +15,7 @@ class WatchlistEntryCreate(BaseModel):
 
 
 class WatchlistEntryUpdate(BaseModel):
+    title: str = ""
     status: WatchlistStatus | None = None
     rating: int | None = Field(default=None, ge=1, le=10)
     review: str | None = None
@@ -25,6 +27,7 @@ class WatchlistEntryRead(BaseModel):
 
     id: int
     tmdb_id: int
+    title: str
     status: WatchlistStatus
     rating: int | None
     review: str

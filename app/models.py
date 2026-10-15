@@ -15,6 +15,7 @@ class Watchlist(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
 
     tmdb_id: int = Field(unique=True, index=True)
+    title: str = ""
     status: WatchlistStatus = Field(default=WatchlistStatus.WANT)
 
     rating: int | None = Field(default=None, ge=1, le=10)

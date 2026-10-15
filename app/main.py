@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -8,6 +9,24 @@ from app.database import create_all
 from app.routers import browse, entries
 
 load_dotenv()
+
+# Defaults cover local Vite and the live Workers frontend with no env set.
+_DEFAULT_CORS_ORIGINS = (
+    "http://localhost:5173",
+    "https://flickpick.mel-2cb.workers.dev",
+)
+
+
+def cors_origins() -> list[str]:
+    """Return allowlisted CORS origins. Never includes a wildcard."""
+    origins = list(_DEFAULT_CORS_ORIGINS)
+    extra = os.getenv("CORS_ORIGINS", "")
+    for origin in extra.split(","):
+        origin = origin.strip().rstrip("/")
+        if not origin or origin == "*" or origin in origins:
+            continue
+        origins.append(origin)
+    return origins
 
 
 @asynccontextmanager
@@ -21,10 +40,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",
-            "https://flickpick.mel-2cb.workers.dev",
-        ],
+        allow_origins=cors_origins(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

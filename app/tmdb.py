@@ -1,7 +1,9 @@
 import logging
 import os
 import time
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 from dotenv import load_dotenv
@@ -84,7 +86,15 @@ def get_trending_movies(time_window: str = "week") -> Any:
 
 
 def get_upcoming_movies() -> Any:
-    return _cached_get("/movie/upcoming", params={"region": "US"})
+    payload = _cached_get("/movie/upcoming", params={"region": "US"})
+    # TMDB's upcoming list can include already-released titles; keep today+.
+    today = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+    results = [
+        movie
+        for movie in (payload.get("results") or [])
+        if (movie.get("release_date") or "") >= today
+    ]
+    return {**payload, "results": results}
 
 
 def search_movies(query: str) -> Any:

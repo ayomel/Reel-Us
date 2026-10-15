@@ -97,7 +97,9 @@ def test_search_rejects_whitespace_only_query(client):
 
 
 def test_get_upcoming_movies_uses_us_region(client):
-    payload = {"results": [{"id": 10, "title": "Soon"}]}
+    payload = {
+        "results": [{"id": 10, "title": "Soon", "release_date": "2099-01-01"}],
+    }
 
     with patch("app.tmdb._cached_get", return_value=payload) as cached_get:
         response = client.get("/movies/upcoming")
@@ -105,6 +107,23 @@ def test_get_upcoming_movies_uses_us_region(client):
     assert response.status_code == 200
     assert response.json() == payload
     cached_get.assert_called_once_with("/movie/upcoming", params={"region": "US"})
+
+
+def test_get_upcoming_filters_past_and_missing_release_dates(client):
+    payload = {
+        "page": 1,
+        "results": [
+            {"id": 1, "title": "Old", "release_date": "2000-01-01"},
+            {"id": 2, "title": "Future", "release_date": "2099-06-01"},
+            {"id": 3, "title": "Missing date"},
+        ],
+    }
+
+    with patch("app.tmdb._cached_get", return_value=payload):
+        response = client.get("/movies/upcoming")
+
+    assert response.status_code == 200
+    assert [movie["title"] for movie in response.json()["results"]] == ["Future"]
 
 
 @pytest.mark.parametrize("upstream_status", [401, 404, 429, 500, 503])

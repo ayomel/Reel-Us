@@ -98,6 +98,85 @@ def test_search_rejects_whitespace_only_query(client):
     assert response.status_code == 422
 
 
+def test_search_tv_preserves_tmdb_payload_and_trims_query(client):
+    payload = {
+        "page": 1,
+        "results": [{"id": 1396, "name": "Breaking Bad", "media_type": "tv"}],
+        "total_pages": 1,
+        "total_results": 1,
+        "extra": {"kept": True},
+    }
+
+    with patch("app.tmdb.search_tv", return_value=payload) as search_tv:
+        response = client.get("/search/tv", params={"query": "  breaking bad  "})
+
+    assert response.status_code == 200
+    assert response.json() == payload
+    search_tv.assert_called_once_with("breaking bad")
+
+
+@pytest.mark.parametrize("query", [None, "", "   "])
+def test_search_tv_rejects_missing_or_blank_query_without_tmdb_call(client, query):
+    with patch("app.tmdb.search_tv") as search_tv:
+        response = client.get("/search/tv", params={} if query is None else {"query": query})
+
+    assert response.status_code == 422
+    search_tv.assert_not_called()
+
+
+@pytest.mark.parametrize("upstream_status", [401, 404, 429, 500, 503])
+def test_search_tv_maps_upstream_status_errors_to_503(client, upstream_status):
+    with patch("app.tmdb.search_tv", side_effect=_http_error(upstream_status)):
+        response = client.get("/search/tv", params={"query": "breaking bad"})
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Service unavailable"
+
+
+def test_search_tv_maps_transport_errors_to_503(client):
+    with patch("app.tmdb.search_tv", side_effect=_request_error()):
+        response = client.get("/search/tv", params={"query": "breaking bad"})
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Service unavailable"
+
+
+def test_search_tv_uses_300_second_cache_and_separates_queries(monkeypatch):
+    from app import tmdb
+
+    calls = []
+    now = [10.0]
+
+    def fake_get(url, *, headers, params, timeout):
+        calls.append((url, params))
+        request = httpx.Request("GET", url)
+        return httpx.Response(
+            200,
+            json={"results": [{"name": params["query"]}]},
+            request=request,
+        )
+
+    monkeypatch.setattr(tmdb.httpx, "get", fake_get)
+    monkeypatch.setattr(tmdb.time, "monotonic", lambda: now[0])
+    tmdb.clear_cache()
+
+    first = tmdb.search_tv("breaking bad")
+    cached = tmdb.search_tv("breaking bad")
+    second = tmdb.search_tv("the wire")
+    now[0] = 311.0
+    expired = tmdb.search_tv("breaking bad")
+
+    assert first == {"results": [{"name": "breaking bad"}]}
+    assert cached == first
+    assert second == {"results": [{"name": "the wire"}]}
+    assert expired == first
+    assert calls == [
+        ("https://api.themoviedb.org/3/search/tv", {"query": "breaking bad"}),
+        ("https://api.themoviedb.org/3/search/tv", {"query": "the wire"}),
+        ("https://api.themoviedb.org/3/search/tv", {"query": "breaking bad"}),
+    ]
+
+
 def test_get_upcoming_movies_uses_us_region(client):
     payload = {
         "results": [{"id": 10, "title": "Soon", "release_date": "2099-01-01"}],

@@ -1,0 +1,4 @@
+mocks:
+  - routeKey: tmdb
+    path: ../mocks/tmdb/default.js
+simulation: tv-search

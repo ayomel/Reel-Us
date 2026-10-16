@@ -141,3 +141,7 @@ def search_movies(query: str) -> Any:
         "total_results": int(page1.get("total_results") or len(unique)),
         "results": unique,
     }
+
+
+def search_tv(query: str) -> Any:
+    return _cached_get("/search/tv", params={"query": query})

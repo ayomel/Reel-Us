@@ -107,41 +107,41 @@ def get_upcoming_movies() -> Any:
     return out
 
 
-def search_movies(query: str) -> Any:
+def search_multi(query: str) -> Any:
     # Merge pages 1-2 before sorting so high-popularity hits on page 2
-    # (e.g. Batman for "bat") are not dropped by TMDB's default relevance order.
-    page1 = _cached_get("/search/movie", params={"query": query, "page": "1"})
+    # are not dropped by TMDB's default relevance order.
+    page1 = _cached_get("/search/multi", params={"query": query, "page": "1"})
     results = list(page1.get("results") or [])
     upstream_total_pages = int(page1.get("total_pages") or 1)
     if upstream_total_pages >= 2:
         try:
-            page2 = _cached_get("/search/movie", params={"query": query, "page": "2"})
+            page2 = _cached_get("/search/multi", params={"query": query, "page": "2"})
             results.extend(page2.get("results") or [])
         except (httpx.HTTPStatusError, httpx.RequestError) as exc:
             # Page 1 alone is still useful; log and continue without page 2.
             logger.warning("TMDB search page 2 failed; using page 1 only: %s", exc)
 
-    seen_ids: set[int] = set()
+    seen: set[tuple[str, int]] = set()
     unique: list[dict] = []
-    for movie in results:
-        movie_id = movie.get("id")
-        if movie_id is None or movie_id in seen_ids:
+    for item in results:
+        media_type = item.get("media_type")
+        item_id = item.get("id")
+        if media_type not in {"movie", "tv"} or item_id is None:
             continue
-        seen_ids.add(movie_id)
-        unique.append(movie)
+        key = (media_type, item_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
 
-    unique.sort(key=lambda movie: movie.get("popularity") or 0, reverse=True)
+    unique.sort(key=lambda item: item.get("popularity") or 0, reverse=True)
 
-    # Return one ranked page built from TMDB pages 1-2.
-    # total_pages is always 1. total_results is TMDB's full match count.
+    # One ranked page is built from TMDB pages 1-2; totals describe returned
+    # movie and TV records only, excluding people and duplicate hits.
     return {
         **page1,
         "page": 1,
         "total_pages": 1,
-        "total_results": int(page1.get("total_results") or len(unique)),
+        "total_results": len(unique),
         "results": unique,
     }
-
-
-def search_tv(query: str) -> Any:
-    return _cached_get("/search/tv", params={"query": query})

@@ -31,14 +31,15 @@ def _request_error() -> httpx.RequestError:
     )
 
 
-def test_search_merges_pages_and_sorts_by_popularity(client):
+def test_search_merges_pages_filters_people_deduplicates_and_sorts(client):
     page1 = {
         "page": 1,
         "total_pages": 5,
         "total_results": 87,
         "results": [
-            {"id": 1, "title": "Bat Food", "popularity": 5.0},
-            {"id": 2, "title": "Battle", "popularity": 20.0},
+            {"id": 1, "media_type": "movie", "title": "Bat Food", "popularity": 5.0},
+            {"id": 2, "media_type": "tv", "name": "Battle", "popularity": 20.0},
+            {"id": 9, "media_type": "person", "name": "Bat Person", "popularity": 500.0},
         ],
     }
     page2 = {
@@ -46,25 +47,27 @@ def test_search_merges_pages_and_sorts_by_popularity(client):
         "total_pages": 5,
         "total_results": 87,
         "results": [
-            {"id": 3, "title": "Batman", "popularity": 100.0},
+            {"id": 3, "media_type": "movie", "title": "Batman", "popularity": 100.0},
+            {"id": 1, "media_type": "movie", "title": "Bat Food duplicate", "popularity": 1.0},
+            {"id": 1, "media_type": "tv", "name": "Bat Food show", "popularity": 8.0},
         ],
     }
 
     def fake_cached_get(path, params=None):
-        assert path == "/search/movie"
+        assert path == "/search/multi"
         page = (params or {}).get("page", "1")
         return page1 if page == "1" else page2
 
     with patch("app.tmdb._cached_get", side_effect=fake_cached_get):
-        response = client.get("/search/movie", params={"query": "bat"})
+        response = client.get("/search", params={"query": "bat"})
 
     assert response.status_code == 200
     body = response.json()
-    titles = [movie["title"] for movie in body["results"]]
-    assert titles == ["Batman", "Battle", "Bat Food"]
+    titles = [item.get("title", item.get("name")) for item in body["results"]]
+    assert titles == ["Batman", "Battle", "Bat Food show", "Bat Food"]
     assert body["page"] == 1
     assert body["total_pages"] == 1
-    assert body["total_results"] == 87
+    assert body["total_results"] == 4
 
 
 def test_search_falls_back_to_page1_when_page2_fails(client):
@@ -72,7 +75,14 @@ def test_search_falls_back_to_page1_when_page2_fails(client):
         "page": 1,
         "total_pages": 2,
         "total_results": 40,
-        "results": [{"id": 1, "title": "Only Page One", "popularity": 10.0}],
+        "results": [
+            {
+                "id": 1,
+                "media_type": "movie",
+                "title": "Only Page One",
+                "popularity": 10.0,
+            }
+        ],
     }
 
     def fake_cached_get(path, params=None):
@@ -82,20 +92,55 @@ def test_search_falls_back_to_page1_when_page2_fails(client):
         return page1
 
     with patch("app.tmdb._cached_get", side_effect=fake_cached_get):
-        response = client.get("/search/movie", params={"query": "bat"})
+        response = client.get("/search", params={"query": "bat"})
 
     assert response.status_code == 200
     assert [movie["title"] for movie in response.json()["results"]] == ["Only Page One"]
 
 
 def test_search_rejects_empty_query(client):
-    response = client.get("/search/movie", params={"query": ""})
+    response = client.get("/search", params={"query": ""})
+    assert response.status_code == 422
+
+
+def test_search_rejects_missing_query(client):
+    response = client.get("/search")
     assert response.status_code == 422
 
 
 def test_search_rejects_whitespace_only_query(client):
-    response = client.get("/search/movie", params={"query": "   "})
+    response = client.get("/search", params={"query": "   "})
     assert response.status_code == 422
+
+
+def test_search_trims_query_before_tmdb_call(client):
+    with patch("app.tmdb.search_multi", return_value={"results": []}) as search_multi:
+        response = client.get("/search", params={"query": "  bat  "})
+
+    assert response.status_code == 200
+    search_multi.assert_called_once_with("bat")
+
+
+def test_search_all_person_first_page_returns_empty_without_requesting_page2():
+    from app import tmdb
+
+    with patch(
+        "app.tmdb._cached_get",
+        return_value={
+            "page": 1,
+            "total_pages": 1,
+            "total_results": 1,
+            "results": [{"id": 9, "media_type": "person", "name": "Bat Person"}],
+        },
+    ) as cached_get:
+        result = tmdb.search_multi("nothing")
+
+    assert result["results"] == []
+    assert result["total_results"] == 0
+    assert result["total_pages"] == 1
+    cached_get.assert_called_once_with(
+        "/search/multi", params={"query": "nothing", "page": "1"}
+    )
 
 
 def test_get_upcoming_movies_uses_us_region(client):
@@ -158,6 +203,14 @@ def test_get_upcoming_maps_upstream_errors_to_503(client, upstream_status):
     assert response.json()["detail"] == "Service unavailable"
 
 
+def test_search_rejects_removed_media_specific_routes(client):
+    movie_response = client.get("/search/movie", params={"query": "bat"})
+    tv_response = client.get("/search/tv", params={"query": "bat"})
+
+    assert movie_response.status_code == 404
+    assert tv_response.status_code == 404
+
+
 def test_get_upcoming_timeout_returns_503(client):
     with patch("app.tmdb.get_upcoming_movies", side_effect=_timeout_error()):
         response = client.get("/movies/upcoming")
@@ -209,16 +262,16 @@ def test_get_movie_request_error_returns_503(client):
 
 @pytest.mark.parametrize("upstream_status", [401, 429, 503])
 def test_search_maps_upstream_errors_to_503(client, upstream_status):
-    with patch("app.tmdb.search_movies", side_effect=_http_error(upstream_status)):
-        response = client.get("/search/movie", params={"query": "bat"})
+    with patch("app.tmdb.search_multi", side_effect=_http_error(upstream_status)):
+        response = client.get("/search", params={"query": "bat"})
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Service unavailable"
 
 
 def test_search_tmdb_404_returns_503(client):
-    with patch("app.tmdb.search_movies", side_effect=_http_error(404)):
-        response = client.get("/search/movie", params={"query": "bat"})
+    with patch("app.tmdb.search_multi", side_effect=_http_error(404)):
+        response = client.get("/search", params={"query": "bat"})
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Service unavailable"

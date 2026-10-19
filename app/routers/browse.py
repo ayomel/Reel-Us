@@ -46,17 +46,9 @@ def get_trending_movies():
         raise_for_tmdb_failure(exc)
 
 
-@router.get("/search/movie")
-def search_movies(query: str = Query(min_length=1, pattern=r".*\S.*")):
+@router.get("/search")
+def search(query: str = Query(min_length=1, pattern=r".*\S.*")):
     try:
-        return tmdb.search_movies(query.strip())
-    except (HTTPStatusError, RequestError) as exc:
-        raise_for_tmdb_failure(exc)
-
-
-@router.get("/search/tv")
-def search_tv(query: str = Query(min_length=1, pattern=r".*\S.*")):
-    try:
-        return tmdb.search_tv(query.strip())
+        return tmdb.search_multi(query.strip())
     except (HTTPStatusError, RequestError) as exc:
         raise_for_tmdb_failure(exc)

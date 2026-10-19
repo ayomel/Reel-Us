@@ -1,19 +1,38 @@
-from fastapi import APIRouter, HTTPException, Query
+from typing import Annotated, Any
+
+from fastapi import APIRouter, HTTPException, Path, Query
 from httpx import HTTPStatusError, RequestError
 
 from app import tmdb
 
 router = APIRouter(tags=["browse"])
 
+_TV_STRING_DEFAULTS = ("tagline", "homepage", "first_air_date", "last_air_date")
 
-def raise_for_tmdb_failure(exc: Exception, *, movie_lookup: bool = False) -> None:
+
+def _with_tv_string_defaults(show: dict[str, Any]) -> dict[str, Any]:
+    for key in _TV_STRING_DEFAULTS:
+        if show.get(key) is None:
+            show[key] = ""
+    return show
+
+
+def raise_for_tmdb_failure(
+    exc: Exception,
+    *,
+    movie_lookup: bool = False,
+    tv_lookup: bool = False,
+) -> None:
     """Map TMDB failures to API errors.
 
-    A TMDB 404 is 404 Movie not found only on movie lookups. Search, upcoming,
+    A TMDB 404 is 404 on movie or TV detail lookups. Search, upcoming,
     trending, and every other TMDB failure become 503 Service unavailable.
     """
-    if movie_lookup and isinstance(exc, HTTPStatusError) and exc.response.status_code == 404:
-        raise HTTPException(status_code=404, detail="Movie not found") from exc
+    if isinstance(exc, HTTPStatusError) and exc.response.status_code == 404:
+        if movie_lookup:
+            raise HTTPException(status_code=404, detail="Movie not found") from exc
+        if tv_lookup:
+            raise HTTPException(status_code=404, detail="TV show not found") from exc
     raise HTTPException(status_code=503, detail="Service unavailable") from exc
 
 
@@ -36,6 +55,25 @@ def get_movie(movie_id: int):
         return {**movie, "streaming_providers": us_providers, "trailer": trailer}
     except (HTTPStatusError, RequestError) as exc:
         raise_for_tmdb_failure(exc, movie_lookup=True)
+
+
+@router.get("/tv/{tv_id}")
+def get_tv(tv_id: Annotated[int, Path(gt=0)]):
+    try:
+        show = tmdb.get_tv(tv_id)
+        providers = tmdb.get_tv_watch_providers(tv_id)
+        us_providers = providers.get("results", {}).get("US", {})
+        videos = show.get("videos", {}).get("results", [])
+        trailer = tmdb.get_trailer_url(videos)
+        payload = {
+            **show,
+            "streaming_providers": us_providers,
+            "trailer": trailer,
+            "softcore": False,
+        }
+        return _with_tv_string_defaults(payload)
+    except (HTTPStatusError, RequestError) as exc:
+        raise_for_tmdb_failure(exc, tv_lookup=True)
 
 
 @router.get("/trending/movies")

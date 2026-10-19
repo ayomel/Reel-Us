@@ -260,6 +260,71 @@ def test_get_movie_request_error_returns_503(client):
     assert response.json()["detail"] == "Service unavailable"
 
 
+def test_get_tv_success(client):
+    show = {
+        "id": 1396,
+        "name": "Breaking Bad",
+        "overview": "A chemistry teacher turned meth cook.",
+        "videos": {"results": []},
+        "tagline": None,
+    }
+    providers = {"results": {"US": {"link": "https://www.themoviedb.org/tv/1396/watch"}}}
+
+    with (
+        patch("app.tmdb.get_tv", return_value=show),
+        patch("app.tmdb.get_tv_watch_providers", return_value=providers),
+    ):
+        response = client.get("/tv/1396")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == 1396
+    assert body["name"] == "Breaking Bad"
+    assert body["tagline"] == ""
+    assert body["streaming_providers"] == providers["results"]["US"]
+    assert body["trailer"] is None
+    assert body["softcore"] is False
+
+
+def test_get_tv_unknown_id_returns_404(client):
+    with patch("app.tmdb.get_tv", side_effect=_http_error(404)):
+        response = client.get("/tv/999999999")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "TV show not found"
+
+
+@pytest.mark.parametrize("upstream_status", [401, 429, 500, 503])
+def test_get_tv_maps_upstream_errors_to_503(client, upstream_status):
+    with patch("app.tmdb.get_tv", side_effect=_http_error(upstream_status)):
+        response = client.get("/tv/999999999")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Service unavailable"
+
+
+def test_get_tv_timeout_returns_503(client):
+    with patch("app.tmdb.get_tv", side_effect=_timeout_error()):
+        response = client.get("/tv/1")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Service unavailable"
+
+
+def test_get_tv_request_error_returns_503(client):
+    with patch("app.tmdb.get_tv", side_effect=_request_error()):
+        response = client.get("/tv/1")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Service unavailable"
+
+
+def test_get_tv_rejects_non_positive_id(client):
+    response = client.get("/tv/0")
+
+    assert response.status_code == 422
+
+
 @pytest.mark.parametrize("upstream_status", [401, 429, 503])
 def test_search_maps_upstream_errors_to_503(client, upstream_status):
     with patch("app.tmdb.search_multi", side_effect=_http_error(upstream_status)):

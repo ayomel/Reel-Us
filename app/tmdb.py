@@ -81,6 +81,17 @@ def get_movie_watch_providers(movie_id: int) -> Any:
     return _cached_get(f"/movie/{movie_id}/watch/providers")
 
 
+def get_tv(tv_id: int) -> Any:
+    return _cached_get(
+        f"/tv/{tv_id}",
+        params={"append_to_response": "videos"},
+    )
+
+
+def get_tv_watch_providers(tv_id: int) -> Any:
+    return _cached_get(f"/tv/{tv_id}/watch/providers")
+
+
 def get_trending_movies(time_window: str = "week") -> Any:
     return _cached_get(f"/trending/movie/{time_window}")
 

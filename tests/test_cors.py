@@ -10,6 +10,7 @@ from app.main import cors_origins
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "https://flickpick.mel-2cb.workers.dev",
+        "https://feat-tv-season-browser-flickpick.mel-2cb.workers.dev",
     ],
 )
 def test_cors_preflight_allows_default_origins(client, origin):
@@ -79,4 +80,5 @@ def test_cors_origins_defaults_without_env(monkeypatch):
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "https://flickpick.mel-2cb.workers.dev",
+        "https://feat-tv-season-browser-flickpick.mel-2cb.workers.dev",
     ]

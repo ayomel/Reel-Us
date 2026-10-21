@@ -6,10 +6,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.database import get_db
-from app.models import Watchlist
+from app.models import MediaType, Watchlist
 from app.routers.browse import raise_for_tmdb_failure
 from app.schemas import WatchlistEntryCreate, WatchlistEntryRead, WatchlistEntryUpdate
-from app.tmdb import get_movie
+from app.tmdb import get_movie, get_tv
 
 router = APIRouter(tags=["entries"])
 
@@ -21,7 +21,12 @@ def list_entries(session: Session = Depends(get_db)):
 
 @router.post("/entry", response_model=WatchlistEntryRead, status_code=201)
 def create_entry(body: WatchlistEntryCreate, session: Session = Depends(get_db)):
-    existing = session.exec(select(Watchlist).where(Watchlist.tmdb_id == body.tmdb_id)).first()
+    existing = session.exec(
+        select(Watchlist).where(
+            Watchlist.tmdb_id == body.tmdb_id,
+            Watchlist.media_type == body.media_type,
+        )
+    ).first()
     if existing is not None:
         raise HTTPException(status_code=409, detail="Entry with this tmdb_id already exists")
 
@@ -46,10 +51,15 @@ def get_entry(entry_id: int, session: Session = Depends(get_db)):
     if entry is None:
         raise HTTPException(status_code=404, detail="Entry not found")
     try:
-        movie = get_movie(entry.tmdb_id)
+        if entry.media_type == MediaType.TV:
+            return {**entry.model_dump(), "tv": get_tv(entry.tmdb_id)}
+        return {**entry.model_dump(), "movie": get_movie(entry.tmdb_id)}
     except HTTPError as exc:
-        raise_for_tmdb_failure(exc, movie_lookup=True)
-    return {**entry.model_dump(), "movie": movie}
+        raise_for_tmdb_failure(
+            exc,
+            movie_lookup=entry.media_type == MediaType.MOVIE,
+            tv_lookup=entry.media_type == MediaType.TV,
+        )
 
 
 @router.patch("/entry/{entry_id}", response_model=WatchlistEntryRead)

@@ -88,6 +88,10 @@ def get_tv(tv_id: int) -> Any:
     )
 
 
+def get_tv_season(tv_id: int, season_number: int) -> Any:
+    return _cached_get(f"/tv/{tv_id}/season/{season_number}")
+
+
 def get_tv_watch_providers(tv_id: int) -> Any:
     return _cached_get(f"/tv/{tv_id}/watch/providers")
 

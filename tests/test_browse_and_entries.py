@@ -319,6 +319,54 @@ def test_get_tv_request_error_returns_503(client):
     assert response.json()["detail"] == "Service unavailable"
 
 
+def test_get_tv_season_returns_details_including_specials(client):
+    season = {
+        "id": 1824,
+        "name": "Specials",
+        "season_number": 0,
+        "episodes": [{"id": 1, "episode_number": 1, "name": "Pilot"}],
+    }
+
+    with patch("app.tmdb.get_tv_season", return_value=season) as get_season:
+        response = client.get("/tv/1396/season/0")
+
+    assert response.status_code == 200
+    assert response.json() == season
+    get_season.assert_called_once_with(1396, 0)
+
+
+def test_get_tv_season_unknown_season_returns_404(client):
+    with patch("app.tmdb.get_tv_season", side_effect=_http_error(404)):
+        response = client.get("/tv/1396/season/99")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "TV season not found"
+
+
+@pytest.mark.parametrize("upstream_status", [401, 429, 500, 503])
+def test_get_tv_season_maps_upstream_errors_to_503(client, upstream_status):
+    with patch("app.tmdb.get_tv_season", side_effect=_http_error(upstream_status)):
+        response = client.get("/tv/1396/season/1")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Service unavailable"
+
+
+def test_get_tv_season_request_error_returns_503(client):
+    with patch("app.tmdb.get_tv_season", side_effect=_request_error()):
+        response = client.get("/tv/1396/season/1")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Service unavailable"
+
+
+@pytest.mark.parametrize("path", ["/tv/0/season/0", "/tv/1396/season/-1"])
+def test_get_tv_season_rejects_invalid_ids_and_seasons(client, path):
+    response = client.get(path)
+
+    assert response.status_code == 422
+
+
 def test_get_tv_rejects_non_positive_id(client):
     response = client.get("/tv/0")
 

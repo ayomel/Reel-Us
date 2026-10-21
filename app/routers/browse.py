@@ -22,17 +22,20 @@ def raise_for_tmdb_failure(
     *,
     movie_lookup: bool = False,
     tv_lookup: bool = False,
+    tv_season_lookup: bool = False,
 ) -> None:
     """Map TMDB failures to API errors.
 
-    A TMDB 404 is 404 on movie or TV detail lookups. Search, upcoming,
-    trending, and every other TMDB failure become 503 Service unavailable.
+    A TMDB 404 is 404 on movie, TV, or TV season detail lookups. Search,
+    upcoming, trending, and every other TMDB failure become 503 Service unavailable.
     """
     if isinstance(exc, HTTPStatusError) and exc.response.status_code == 404:
         if movie_lookup:
             raise HTTPException(status_code=404, detail="Movie not found") from exc
         if tv_lookup:
             raise HTTPException(status_code=404, detail="TV show not found") from exc
+        if tv_season_lookup:
+            raise HTTPException(status_code=404, detail="TV season not found") from exc
     raise HTTPException(status_code=503, detail="Service unavailable") from exc
 
 
@@ -74,6 +77,17 @@ def get_tv(tv_id: Annotated[int, Path(gt=0)]):
         return _with_tv_string_defaults(payload)
     except (HTTPStatusError, RequestError) as exc:
         raise_for_tmdb_failure(exc, tv_lookup=True)
+
+
+@router.get("/tv/{tv_id}/season/{season_number}")
+def get_tv_season(
+    tv_id: Annotated[int, Path(gt=0)],
+    season_number: Annotated[int, Path(ge=0)],
+):
+    try:
+        return tmdb.get_tv_season(tv_id, season_number)
+    except (HTTPStatusError, RequestError) as exc:
+        raise_for_tmdb_failure(exc, tv_season_lookup=True)
 
 
 @router.get("/trending/movies")

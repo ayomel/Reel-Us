@@ -47,6 +47,29 @@ def get_upcoming_movies():
         raise_for_tmdb_failure(exc)
 
 
+@router.get("/movies/discover")
+def discover_movies(
+    genre_ids: Annotated[
+        str,
+        Query(
+            alias="with_genres",
+            pattern=r"^[1-9]\d*(?:\|[1-9]\d*)*$",
+        ),
+    ],
+):
+    try:
+        payload = tmdb.discover_movies(genre_ids)
+        return {
+            **payload,
+            "results": [
+                {**result, "media_type": "movie"}
+                for result in (payload.get("results") or [])
+            ],
+        }
+    except (HTTPStatusError, RequestError) as exc:
+        raise_for_tmdb_failure(exc)
+
+
 @router.get("/movies/{movie_id}")
 def get_movie(movie_id: int):
     try:
@@ -73,6 +96,29 @@ def get_movie_recommendations(movie_id: Annotated[int, Path(gt=0)]):
         }
     except (HTTPStatusError, RequestError) as exc:
         raise_for_tmdb_failure(exc, movie_lookup=True)
+
+
+@router.get("/tv/discover")
+def discover_tv(
+    genre_ids: Annotated[
+        str,
+        Query(
+            alias="with_genres",
+            pattern=r"^[1-9]\d*(?:\|[1-9]\d*)*$",
+        ),
+    ],
+):
+    try:
+        payload = tmdb.discover_tv(genre_ids)
+        return {
+            **payload,
+            "results": [
+                {**result, "media_type": "tv"}
+                for result in (payload.get("results") or [])
+            ],
+        }
+    except (HTTPStatusError, RequestError) as exc:
+        raise_for_tmdb_failure(exc)
 
 
 @router.get("/tv/{tv_id}")

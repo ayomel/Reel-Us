@@ -480,6 +480,62 @@ def test_search_tmdb_404_returns_503(client):
     assert response.json()["detail"] == "Service unavailable"
 
 
+@pytest.mark.parametrize(
+    ("path", "patch_target", "media_type"),
+    [
+        ("/movies/discover", "discover_movies", "movie"),
+        ("/tv/discover", "discover_tv", "tv"),
+    ],
+)
+def test_discover_tags_results_with_media_type(client, path, patch_target, media_type):
+    payload = {"page": 1, "results": [{"id": 10}, {"id": 11, "media_type": "old"}]}
+    with patch(f"app.tmdb.{patch_target}", return_value=payload) as discover:
+        response = client.get(path, params={"with_genres": "27|53"})
+
+    assert response.status_code == 200
+    assert response.json()["results"] == [
+        {"id": 10, "media_type": media_type},
+        {"id": 11, "media_type": media_type},
+    ]
+    discover.assert_called_once_with("27|53")
+
+
+@pytest.mark.parametrize("path", ["/movies/discover", "/tv/discover"])
+@pytest.mark.parametrize("genre_ids", ["", "0", "27,53", "27||53", "27|x"])
+def test_discover_rejects_invalid_genre_lists(client, path, genre_ids):
+    response = client.get(path, params={"with_genres": genre_ids})
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("path", "patch_target"),
+    [
+        ("/movies/discover", "discover_movies"),
+        ("/tv/discover", "discover_tv"),
+    ],
+)
+def test_discover_maps_upstream_failures_to_503(client, path, patch_target):
+    with patch(f"app.tmdb.{patch_target}", side_effect=_http_error(404)):
+        response = client.get(path, params={"with_genres": "27|53"})
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Service unavailable"
+
+
+@pytest.mark.parametrize(
+    ("discover", "path"),
+    [
+        (tmdb.discover_movies, "/discover/movie"),
+        (tmdb.discover_tv, "/discover/tv"),
+    ],
+)
+def test_discover_uses_tmdb_genre_filter(discover, path):
+    with patch("app.tmdb._cached_get", return_value={"results": []}) as cached_get:
+        discover("27|53")
+
+    cached_get.assert_called_once_with(path, params={"with_genres": "27|53"})
+
+
 @pytest.mark.parametrize("upstream_status", [401, 429, 503])
 def test_trending_maps_upstream_errors_to_503(client, upstream_status):
     with patch("app.tmdb.get_trending_movies", side_effect=_http_error(upstream_status)):

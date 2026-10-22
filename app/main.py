@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(lifespan=lifespan)
+    app = FastAPI(title="FlickPick API", lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,

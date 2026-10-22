@@ -60,6 +60,21 @@ def get_movie(movie_id: int):
         raise_for_tmdb_failure(exc, movie_lookup=True)
 
 
+@router.get("/movies/{movie_id}/recommendations")
+def get_movie_recommendations(movie_id: Annotated[int, Path(gt=0)]):
+    try:
+        payload = tmdb.get_movie_recommendations(movie_id)
+        return {
+            **payload,
+            "results": [
+                {**result, "media_type": "movie"}
+                for result in (payload.get("results") or [])
+            ],
+        }
+    except (HTTPStatusError, RequestError) as exc:
+        raise_for_tmdb_failure(exc, movie_lookup=True)
+
+
 @router.get("/tv/{tv_id}")
 def get_tv(tv_id: Annotated[int, Path(gt=0)]):
     try:
@@ -75,6 +90,21 @@ def get_tv(tv_id: Annotated[int, Path(gt=0)]):
             "softcore": False,
         }
         return _with_tv_string_defaults(payload)
+    except (HTTPStatusError, RequestError) as exc:
+        raise_for_tmdb_failure(exc, tv_lookup=True)
+
+
+@router.get("/tv/{tv_id}/recommendations")
+def get_tv_recommendations(tv_id: Annotated[int, Path(gt=0)]):
+    try:
+        payload = tmdb.get_tv_recommendations(tv_id)
+        return {
+            **payload,
+            "results": [
+                {**result, "media_type": "tv"}
+                for result in (payload.get("results") or [])
+            ],
+        }
     except (HTTPStatusError, RequestError) as exc:
         raise_for_tmdb_failure(exc, tv_lookup=True)
 

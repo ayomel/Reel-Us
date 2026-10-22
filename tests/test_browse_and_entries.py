@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, SQLModel, create_engine, select
 
+from app import tmdb
 from app.models import Watchlist, WatchlistStatus
 
 
@@ -369,6 +370,95 @@ def test_get_tv_season_rejects_invalid_ids_and_seasons(client, path):
 
 def test_get_tv_rejects_non_positive_id(client):
     response = client.get("/tv/0")
+
+    assert response.status_code == 422
+
+
+def test_get_movie_recommendations_tags_results_as_movies(client):
+    payload = {
+        "page": 1,
+        "results": [{"id": 27205, "title": "Inception"}],
+        "total_pages": 1,
+        "total_results": 1,
+    }
+    with patch("app.tmdb.get_movie_recommendations", return_value=payload):
+        response = client.get("/movies/550/recommendations")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        **payload,
+        "results": [{"id": 27205, "title": "Inception", "media_type": "movie"}],
+    }
+
+
+def test_movie_recommendations_use_tmdb_recommendations_endpoint():
+    payload = {"results": []}
+    with patch("app.tmdb._cached_get", return_value=payload) as cached_get:
+        result = tmdb.get_movie_recommendations(550)
+
+    assert result == payload
+    cached_get.assert_called_once_with("/movie/550/recommendations")
+
+
+def test_get_tv_recommendations_tags_results_as_tv(client):
+    payload = {
+        "page": 1,
+        "results": [{"id": 1396, "name": "Breaking Bad"}],
+        "total_pages": 1,
+        "total_results": 1,
+    }
+    with patch("app.tmdb.get_tv_recommendations", return_value=payload):
+        response = client.get("/tv/1396/recommendations")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        **payload,
+        "results": [{"id": 1396, "name": "Breaking Bad", "media_type": "tv"}],
+    }
+
+
+def test_tv_recommendations_use_tmdb_recommendations_endpoint():
+    payload = {"results": []}
+    with patch("app.tmdb._cached_get", return_value=payload) as cached_get:
+        result = tmdb.get_tv_recommendations(1396)
+
+    assert result == payload
+    cached_get.assert_called_once_with("/tv/1396/recommendations")
+
+
+@pytest.mark.parametrize(
+    ("path", "patch_target", "not_found"),
+    [
+        ("/movies/550/recommendations", "get_movie_recommendations", "Movie not found"),
+        ("/tv/1396/recommendations", "get_tv_recommendations", "TV show not found"),
+    ],
+)
+def test_recommendations_map_tmdb_404_to_404(client, path, patch_target, not_found):
+    with patch(f"app.tmdb.{patch_target}", side_effect=_http_error(404)):
+        response = client.get(path)
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == not_found
+
+
+@pytest.mark.parametrize(
+    ("path", "patch_target"),
+    [
+        ("/movies/550/recommendations", "get_movie_recommendations"),
+        ("/tv/1396/recommendations", "get_tv_recommendations"),
+    ],
+)
+def test_recommendations_map_tmdb_errors_to_503(client, path, patch_target):
+    with patch(f"app.tmdb.{patch_target}", side_effect=_http_error(500)):
+        response = client.get(path)
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Service unavailable"
+
+
+@pytest.mark.parametrize("path", ["/movies/0/recommendations", "/tv/0/recommendations"])
+def test_recommendations_reject_non_positive_ids(client, path):
+    response = client.get(path)
 
     assert response.status_code == 422
 

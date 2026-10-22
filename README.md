@@ -1,6 +1,6 @@
-# Movies API
+# FlickPick API
 
-A FastAPI service for movie and TV discovery, backed by TMDB, with an anonymous per-browser watchlist stored in SQLite or PostgreSQL.
+FlickPick's FastAPI service for movie and TV discovery, backed by TMDB, with an anonymous per-browser watchlist stored in SQLite or PostgreSQL.
 
 ## Run locally
 

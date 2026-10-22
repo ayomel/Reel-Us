@@ -439,7 +439,10 @@ def test_postgres_media_type_migration_preserves_rows_and_accepts_tv_twin(monkey
                 )
             )
             rows = connection.execute(
-                text("SELECT id, tmdb_id, media_type FROM watchlist_entries ORDER BY id")
+                text(
+                    "SELECT id, tmdb_id, media_type, added_by "
+                    "FROM watchlist_entries ORDER BY id"
+                )
             ).all()
             savepoint = connection.begin_nested()
             with pytest.raises(IntegrityError):
@@ -453,10 +456,10 @@ def test_postgres_media_type_migration_preserves_rows_and_accepts_tv_twin(monkey
             savepoint.rollback()
             indexes = inspect(connection).get_indexes("watchlist_entries")
             constraints = inspect(connection).get_unique_constraints("watchlist_entries")
-        assert [(r.tmdb_id, r.media_type) for r in rows] == [
-            (42, "movie"),
-            (42, "tv"),
-            (99, "movie"),
+        assert [(r.tmdb_id, r.media_type, r.added_by) for r in rows] == [
+            (42, "movie", "legacy-demo"),
+            (42, "tv", "visitor-b"),
+            (99, "movie", "legacy"),
         ]
         assert not any(
             index.get("unique") and index.get("column_names") == ["tmdb_id"] for index in indexes

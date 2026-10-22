@@ -36,7 +36,10 @@ def client(engine):
             yield session
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:
+    with TestClient(
+        app,
+        headers={"X-Visitor-ID": "11111111-1111-4111-8111-111111111111"},
+    ) as test_client:
         yield test_client
     app.dependency_overrides.clear()
     tmdb.clear_cache()

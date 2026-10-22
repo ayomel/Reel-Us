@@ -197,18 +197,19 @@ def test_media_type_migration_preserves_legacy_row_and_is_idempotent(
             text(
                 "INSERT INTO watchlist_entries "
                 "(tmdb_id, title, status, review, added_by, created_at, updated_at, media_type) "
-                "VALUES (42, 'TV twin', 'want', '', 'legacy', '2026-02-01', '2026-02-02', 'tv') "
+                "VALUES (42, 'TV twin', 'want', '', 'visitor-b', '2026-02-01', '2026-02-02', 'tv') "
                 "RETURNING id"
             )
         ).scalar_one()
         media_constraint = connection.execute(
             text("SELECT sql FROM sqlite_master WHERE type='table' AND name='watchlist_entries'")
         ).scalar_one()
-        pair_unique = any(
-            index.get("unique") and index.get("column_names") == ["media_type", "tmdb_id"]
+        owner_unique = any(
+            index.get("unique")
+            and index.get("column_names") == ["added_by", "media_type", "tmdb_id"]
             for index in inspect(legacy_engine).get_indexes("watchlist_entries")
         ) or any(
-            constraint.get("column_names") == ["media_type", "tmdb_id"]
+            constraint.get("column_names") == ["added_by", "media_type", "tmdb_id"]
             for constraint in inspect(legacy_engine).get_unique_constraints("watchlist_entries")
         )
         no_single_unique = not any(
@@ -228,7 +229,7 @@ def test_media_type_migration_preserves_legacy_row_and_is_idempotent(
         42,
         "Old",
         "want",
-        "legacy",
+        "legacy-demo",
         "2026-01-01",
         "2026-01-02",
         "movie",
@@ -236,7 +237,7 @@ def test_media_type_migration_preserves_legacy_row_and_is_idempotent(
     )
     assert columns["media_type"]["nullable"] is False
     assert "CHECK" in media_constraint.upper()
-    assert pair_unique
+    assert owner_unique
     assert no_single_unique
     assert inserted_id == 31
     assert audit_count == 2
@@ -351,7 +352,7 @@ def test_sqlite_pair_index_name_collision_rolls_back_instead_of_skipping_uniquen
         )
         connection.execute(
             text(
-                "CREATE INDEX uq_watchlist_entries_media_tmdb "
+                "CREATE INDEX uq_watchlist_entries_owner_media_tmdb "
                 "ON watchlist_entries (media_type, tmdb_id)"
             )
         )
@@ -371,7 +372,7 @@ def test_sqlite_pair_index_name_collision_rolls_back_instead_of_skipping_uniquen
         index = next(
             idx
             for idx in inspect(legacy_engine).get_indexes("watchlist_entries")
-            if idx["name"] == "uq_watchlist_entries_media_tmdb"
+            if idx["name"] == "uq_watchlist_entries_owner_media_tmdb"
         )
         assert index["unique"] == 0
         assert connection.execute(text("SELECT id, tmdb_id FROM watchlist_entries")).one() == (
@@ -427,7 +428,7 @@ def test_postgres_media_type_migration_preserves_rows_and_accepts_tv_twin(monkey
                     "INSERT INTO watchlist_entries "
                     "(tmdb_id, title, status, review, added_by, created_at, "
                     "updated_at, media_type) "
-                    "VALUES (42, 'TV twin', 'want', '', 'legacy', now(), now(), 'tv')"
+                    "VALUES (42, 'TV twin', 'want', '', 'visitor-b', now(), now(), 'tv')"
                 )
             )
             connection.execute(
@@ -446,7 +447,7 @@ def test_postgres_media_type_migration_preserves_rows_and_accepts_tv_twin(monkey
                     text(
                         "INSERT INTO watchlist_entries "
                         "(tmdb_id, title, status, review, added_by, created_at, updated_at) "
-                        "VALUES (42, 'duplicate movie', 'want', '', 'legacy', now(), now())"
+                    "VALUES (42, 'duplicate movie', 'want', '', 'legacy-demo', now(), now())"
                     )
                 )
             savepoint.rollback()
@@ -461,10 +462,11 @@ def test_postgres_media_type_migration_preserves_rows_and_accepts_tv_twin(monkey
             index.get("unique") and index.get("column_names") == ["tmdb_id"] for index in indexes
         )
         assert any(
-            constraint.get("column_names") == ["media_type", "tmdb_id"]
+            constraint.get("column_names") == ["added_by", "media_type", "tmdb_id"]
             for constraint in constraints
         ) or any(
-            index.get("unique") and index.get("column_names") == ["media_type", "tmdb_id"]
+            index.get("unique")
+            and index.get("column_names") == ["added_by", "media_type", "tmdb_id"]
             for index in indexes
         )
     finally:

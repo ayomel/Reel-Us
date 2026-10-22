@@ -12,7 +12,6 @@ class WatchlistEntryCreate(BaseModel):
     status: WatchlistStatus = WatchlistStatus.WANT
     rating: int | None = Field(default=None, ge=1, le=10)
     review: str = ""
-    added_by: str = ""
 
 
 class WatchlistEntryUpdate(BaseModel):
@@ -22,7 +21,6 @@ class WatchlistEntryUpdate(BaseModel):
     status: WatchlistStatus | None = None
     rating: int | None = Field(default=None, ge=1, le=10)
     review: str | None = None
-    added_by: str | None = None
 
 
 class WatchlistEntryRead(BaseModel):

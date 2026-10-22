@@ -1,7 +1,9 @@
 from datetime import UTC, datetime
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from httpx import HTTPError
+from pydantic import UUID4
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -12,25 +14,33 @@ from app.schemas import WatchlistEntryCreate, WatchlistEntryRead, WatchlistEntry
 from app.tmdb import get_movie, get_tv
 
 router = APIRouter(tags=["entries"])
+VisitorID = Annotated[UUID4, Header(alias="X-Visitor-ID")]
 
 
 @router.get("/entry", response_model=list[WatchlistEntryRead])
-def list_entries(session: Session = Depends(get_db)):
-    return session.exec(select(Watchlist)).all()
+def list_entries(visitor_id: VisitorID, session: Session = Depends(get_db)):
+    return session.exec(
+        select(Watchlist).where(Watchlist.added_by == str(visitor_id))
+    ).all()
 
 
 @router.post("/entry", response_model=WatchlistEntryRead, status_code=201)
-def create_entry(body: WatchlistEntryCreate, session: Session = Depends(get_db)):
+def create_entry(
+    body: WatchlistEntryCreate,
+    visitor_id: VisitorID,
+    session: Session = Depends(get_db),
+):
     existing = session.exec(
         select(Watchlist).where(
             Watchlist.tmdb_id == body.tmdb_id,
             Watchlist.media_type == body.media_type,
+            Watchlist.added_by == str(visitor_id),
         )
     ).first()
     if existing is not None:
         raise HTTPException(status_code=409, detail="Entry with this tmdb_id already exists")
 
-    entry = Watchlist.model_validate(body)
+    entry = Watchlist.model_validate({**body.model_dump(), "added_by": str(visitor_id)})
     session.add(entry)
     try:
         session.commit()
@@ -46,8 +56,17 @@ def create_entry(body: WatchlistEntryCreate, session: Session = Depends(get_db))
 
 
 @router.get("/entry/{entry_id}")
-def get_entry(entry_id: int, session: Session = Depends(get_db)):
-    entry = session.get(Watchlist, entry_id)
+def get_entry(
+    entry_id: int,
+    visitor_id: VisitorID,
+    session: Session = Depends(get_db),
+):
+    entry = session.exec(
+        select(Watchlist).where(
+            Watchlist.id == entry_id,
+            Watchlist.added_by == str(visitor_id),
+        )
+    ).first()
     if entry is None:
         raise HTTPException(status_code=404, detail="Entry not found")
     try:
@@ -66,9 +85,15 @@ def get_entry(entry_id: int, session: Session = Depends(get_db)):
 def update_entry(
     entry_id: int,
     body: WatchlistEntryUpdate,
+    visitor_id: VisitorID,
     session: Session = Depends(get_db),
 ):
-    entry = session.get(Watchlist, entry_id)
+    entry = session.exec(
+        select(Watchlist).where(
+            Watchlist.id == entry_id,
+            Watchlist.added_by == str(visitor_id),
+        )
+    ).first()
     if entry is None:
         raise HTTPException(status_code=404, detail="Entry not found")
 
@@ -84,8 +109,17 @@ def update_entry(
 
 
 @router.delete("/entry/{entry_id}", status_code=204)
-def delete_entry(entry_id: int, session: Session = Depends(get_db)):
-    entry = session.get(Watchlist, entry_id)
+def delete_entry(
+    entry_id: int,
+    visitor_id: VisitorID,
+    session: Session = Depends(get_db),
+):
+    entry = session.exec(
+        select(Watchlist).where(
+            Watchlist.id == entry_id,
+            Watchlist.added_by == str(visitor_id),
+        )
+    ).first()
     if entry is None:
         raise HTTPException(status_code=404, detail="Entry not found")
     session.delete(entry)

@@ -501,7 +501,13 @@ def test_create_entry_concurrent_duplicate_posts(tmp_path):
 
 def test_create_entry_integrity_error_returns_409(client, engine):
     with Session(engine) as session:
-        session.add(Watchlist(tmdb_id=88, status=WatchlistStatus.WANT, added_by="seed"))
+        session.add(
+            Watchlist(
+                tmdb_id=88,
+                status=WatchlistStatus.WANT,
+                added_by="11111111-1111-4111-8111-111111111111",
+            )
+        )
         session.commit()
 
     # Pretend the pre-check missed the row so commit hits the unique index.
@@ -592,5 +598,5 @@ def test_legacy_database_title_migration_preserves_rows_and_is_idempotent(tmp_pa
         ).one()
 
     assert "title" in columns
-    assert tuple(row) == (1, 88, "legacy", "")
+    assert tuple(row) == (1, 88, "legacy-demo", "")
     legacy_engine.dispose()

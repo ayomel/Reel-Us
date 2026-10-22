@@ -1,6 +1,6 @@
 # Movies API
 
-A FastAPI service for movie and TV discovery, backed by TMDB, with a shared watchlist stored in SQLite or PostgreSQL.
+A FastAPI service for movie and TV discovery, backed by TMDB, with an anonymous per-browser watchlist stored in SQLite or PostgreSQL.
 
 ## Run locally
 
@@ -19,7 +19,9 @@ The server runs at `http://127.0.0.1:8000` by default. The app creates its datab
 
 ## Endpoints
 
-Interactive API documentation is available at `/docs` (Swagger UI), `/redoc`, and `/openapi.json`. FastAPI also serves `/docs/oauth2-redirect` for the Swagger UI. There is no authentication; watchlist entries are shared by all clients using the same database.
+Interactive API documentation is available at `/docs` (Swagger UI), `/redoc`, and `/openapi.json`. FastAPI also serves `/docs/oauth2-redirect` for the Swagger UI. There are no accounts or authentication. Every `/entry` request must include an `X-Visitor-ID` header containing a UUID v4. The frontend creates and stores this anonymous ID in browser local storage. The API uses it to scope entries; anyone with the same ID can access that browser's list, so this is not account security. Clearing browser data loses access to that list.
+
+Before visitor scoping, watchlist rows were shared across clients. The startup migration keeps those rows and assigns them the reserved owner `legacy-demo`; UUID v4 visitors cannot retrieve or modify them. They remain archived in the database for demo/history purposes.
 
 | Method | Path | Behavior |
 | --- | --- | --- |
@@ -30,11 +32,11 @@ Interactive API documentation is available at `/docs` (Swagger UI), `/redoc`, an
 | GET | `/tv/{tv_id}` | Returns TMDB TV details, US streaming providers, a YouTube trailer URL when available, and the placeholder `softcore: false` field, which is not a content classification. Null `tagline`, `homepage`, `first_air_date`, and `last_air_date` values are returned as empty strings. |
 | GET | `/trending/movies` | Returns TMDB movies trending for the week. |
 | GET | `/search?query={text}` | Searches movies and TV shows. Details are below. |
-| GET | `/entry` | Lists watchlist entries. |
-| POST | `/entry` | Creates a watchlist entry and returns `201 Created`. |
-| GET | `/entry/{entry_id}` | Returns an entry with its current TMDB record under `movie` or `tv`. |
-| PATCH | `/entry/{entry_id}` | Updates editable watchlist fields. |
-| DELETE | `/entry/{entry_id}` | Deletes an entry and returns `204 No Content`. |
+| GET | `/entry` | Lists entries owned by the `X-Visitor-ID` UUID v4. |
+| POST | `/entry` | Creates an entry for the `X-Visitor-ID` and returns `201 Created`. |
+| GET | `/entry/{entry_id}` | Returns an owned entry with its current TMDB record under `movie` or `tv`; another visitor's entry returns `404`. |
+| PATCH | `/entry/{entry_id}` | Updates editable fields on an owned entry; another visitor's entry returns `404`. |
+| DELETE | `/entry/{entry_id}` | Deletes an owned entry and returns `204 No Content`; another visitor's entry returns `404`. |
 
 ### Search behavior
 
@@ -42,13 +44,19 @@ Interactive API documentation is available at `/docs` (Swagger UI), `/redoc`, an
 
 ### Watchlist fields
 
-Create requests require `tmdb_id`. `media_type` accepts `movie` or `tv` and defaults to `movie`; `title` defaults to an empty string, `status` defaults to `want`, `rating` and `review` default to null and an empty string respectively, and `added_by` defaults to an empty string. Save the movie's `title` or TV show's `name` in `title` if you want a display label. The API stores a whole TV show, not individual episodes.
+Create requests require `tmdb_id`. `media_type` accepts `movie` or `tv` and defaults to `movie`; `title` defaults to an empty string, `status` defaults to `want`, and `rating` and `review` default to null and an empty string respectively. The server sets `added_by` from the `X-Visitor-ID` header; clients cannot choose or change an entry's owner. Save the movie's `title` or TV show's `name` in `title` if you want a display label. The API stores a whole TV show, not individual episodes.
 
-`status` accepts `want` or `watched`. `rating` is an integer from 1 to 10 or null. The same TMDB ID may be saved once as a movie and once as a TV show; a duplicate `(media_type, tmdb_id)` returns `409 Conflict`.
+`status` accepts `want` or `watched`. `rating` is an integer from 1 to 10 or null. The same TMDB ID may be saved once as a movie and once as a TV show; a duplicate `(media_type, tmdb_id)` for the same visitor returns `409 Conflict`.
 
-PATCH can change `title`, `status`, `rating`, `review`, and `added_by`. Omitted fields stay unchanged. The entry identity cannot be changed; including `tmdb_id` or `media_type` returns `422`. A missing entry returns `404` for read, update, and delete operations.
+PATCH can change `title`, `status`, `rating`, and `review`. Omitted fields stay unchanged. Entry identity and ownership cannot be changed; including `tmdb_id`, `media_type`, or `added_by` returns `422`. A missing or other visitor's entry returns `404` for read, update, and delete operations.
 
-Example `POST /entry` body:
+Example `POST /entry` request (include the same UUID v4 header on all `/entry` requests):
+
+```http
+X-Visitor-ID: 4fbd4c74-6a67-4c6f-9a11-01964d299977
+```
+
+Request body:
 
 ```json
 {"tmdb_id": 1396, "media_type": "tv", "title": "Breaking Bad", "status": "want"}
@@ -60,7 +68,7 @@ Example `PATCH /entry/1` body:
 {"status": "watched", "rating": 9, "review": "Worth watching."}
 ```
 
-Create, list, and update responses include the saved entry fields: `id`, `tmdb_id`, `media_type`, `title`, `status`, `rating`, `review`, `added_by`, `created_at`, and `updated_at`. The path `entry_id` is the local entry ID, not its TMDB ID.
+Create, list, and update responses include the saved entry fields: `id`, `tmdb_id`, `media_type`, `title`, `status`, `rating`, `review`, `added_by`, `created_at`, and `updated_at`. `added_by` is the server-assigned visitor ID. The path `entry_id` is the local entry ID, not its TMDB ID.
 
 ### Errors and upstream data
 

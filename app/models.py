@@ -18,7 +18,12 @@ class MediaType(StrEnum):
 class Watchlist(SQLModel, table=True):
     __tablename__ = "watchlist_entries"
     __table_args__ = (
-        UniqueConstraint("media_type", "tmdb_id", name="uq_watchlist_entries_media_tmdb"),
+        UniqueConstraint(
+            "added_by",
+            "media_type",
+            "tmdb_id",
+            name="uq_watchlist_entries_owner_media_tmdb",
+        ),
         CheckConstraint("media_type IN ('movie', 'tv')", name="ck_watchlist_entries_media_type"),
     )
 

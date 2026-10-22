@@ -28,10 +28,12 @@ Before visitor scoping, watchlist rows were shared across clients. The startup m
 | GET | `/` | Returns `{"message":"Hello World"}`. |
 | GET | `/health` | Returns `{"status":"ok"}` as a liveness check. It does not check database or TMDB availability. |
 | GET | `/movies/upcoming` | Returns TMDB's US upcoming movies filtered to releases today or later in the `America/New_York` timezone. |
+| GET | `/movies/discover?with_genres={ids}` | Discovers movies for one or more pipe-separated TMDB genre IDs. Results include `media_type: "movie"`. |
 | GET | `/movies/{movie_id}` | Returns TMDB movie details, US streaming providers, and a YouTube trailer URL when available. |
 | GET | `/movies/{movie_id}/recommendations` | Returns TMDB movie recommendations with `media_type: "movie"` on each result. |
 | GET | `/tv/{tv_id}` | Returns TMDB TV details, US streaming providers, a YouTube trailer URL when available, and the placeholder `softcore: false` field, which is not a content classification. Null `tagline`, `homepage`, `first_air_date`, and `last_air_date` values are returned as empty strings. |
 | GET | `/tv/{tv_id}/recommendations` | Returns TMDB TV recommendations with `media_type: "tv"` on each result. |
+| GET | `/tv/discover?with_genres={ids}` | Discovers TV shows for one or more pipe-separated TMDB genre IDs. Results include `media_type: "tv"`. |
 | GET | `/trending/movies` | Returns TMDB movies trending for the week. |
 | GET | `/search?query={text}` | Searches movies and TV shows. Details are below. |
 | GET | `/entry` | Lists entries owned by the `X-Visitor-ID` UUID v4. |
@@ -43,6 +45,8 @@ Before visitor scoping, watchlist rows were shared across clients. The startup m
 ### Search behavior
 
 `query` must contain a non-whitespace character; it is trimmed before sending to TMDB. The API combines the first two TMDB multi-search pages, filters out people, removes duplicate `(media_type, id)` results, and sorts by descending popularity. The response describes one page (`page: 1`, `total_pages: 1`), and `total_results` counts returned movie and TV records. There is no page parameter. If TMDB's second page fails, the API returns results from its first page.
+
+The movie and TV discover routes require `with_genres`, a pipe-separated list of positive TMDB genre IDs. TMDB interprets the pipe as an OR between genres. Each route adds its media type to results so clients can route movie and TV cards to the correct detail page. Unsupported or failed TMDB discover requests return `503 Service unavailable`.
 
 ### Watchlist fields
 

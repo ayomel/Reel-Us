@@ -81,6 +81,10 @@ def get_movie_watch_providers(movie_id: int) -> Any:
     return _cached_get(f"/movie/{movie_id}/watch/providers")
 
 
+def get_movie_recommendations(movie_id: int) -> Any:
+    return _cached_get(f"/movie/{movie_id}/recommendations")
+
+
 def get_tv(tv_id: int) -> Any:
     return _cached_get(
         f"/tv/{tv_id}",
@@ -94,6 +98,10 @@ def get_tv_season(tv_id: int, season_number: int) -> Any:
 
 def get_tv_watch_providers(tv_id: int) -> Any:
     return _cached_get(f"/tv/{tv_id}/watch/providers")
+
+
+def get_tv_recommendations(tv_id: int) -> Any:
+    return _cached_get(f"/tv/{tv_id}/recommendations")
 
 
 def get_trending_movies(time_window: str = "week") -> Any:

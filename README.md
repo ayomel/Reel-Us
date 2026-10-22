@@ -29,7 +29,9 @@ Before visitor scoping, watchlist rows were shared across clients. The startup m
 | GET | `/health` | Returns `{"status":"ok"}` as a liveness check. It does not check database or TMDB availability. |
 | GET | `/movies/upcoming` | Returns TMDB's US upcoming movies filtered to releases today or later in the `America/New_York` timezone. |
 | GET | `/movies/{movie_id}` | Returns TMDB movie details, US streaming providers, and a YouTube trailer URL when available. |
+| GET | `/movies/{movie_id}/recommendations` | Returns TMDB movie recommendations with `media_type: "movie"` on each result. |
 | GET | `/tv/{tv_id}` | Returns TMDB TV details, US streaming providers, a YouTube trailer URL when available, and the placeholder `softcore: false` field, which is not a content classification. Null `tagline`, `homepage`, `first_air_date`, and `last_air_date` values are returned as empty strings. |
+| GET | `/tv/{tv_id}/recommendations` | Returns TMDB TV recommendations with `media_type: "tv"` on each result. |
 | GET | `/trending/movies` | Returns TMDB movies trending for the week. |
 | GET | `/search?query={text}` | Searches movies and TV shows. Details are below. |
 | GET | `/entry` | Lists entries owned by the `X-Visitor-ID` UUID v4. |
@@ -72,7 +74,7 @@ Create, list, and update responses include the saved entry fields: `id`, `tmdb_i
 
 ### Errors and upstream data
 
-Invalid input returns `422`; `tv_id` must be a positive integer. Missing movie or TV records return `404` on their detail routes, and other TMDB failures return `503 Service unavailable`. Watchlist detail lookups return `404 Entry not found` when the local entry is missing; a missing TMDB record also returns `404`.
+Invalid input returns `422`; movie and TV IDs on detail and recommendation routes must be positive integers. Missing movie or TV records return `404` on their detail or recommendation routes, and other TMDB failures return `503 Service unavailable`. Watchlist detail lookups return `404 Entry not found` when the local entry is missing; a missing TMDB record also returns `404`.
 
 `GET /movies/{movie_id}` and `GET /tv/{tv_id}` include raw `videos` data and add a `trailer` URL for the first official YouTube trailer, falling back to the first YouTube trailer or null. Streaming providers contain the US provider data from TMDB, or an empty object if no US data is available. `GET /entry/{entry_id}` returns raw TMDB details with videos under `movie` or `tv`; it does not add the convenience `trailer` or `streaming_providers` fields.
 
